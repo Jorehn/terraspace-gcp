@@ -1,13 +1,14 @@
 locals {
   vpc-name = "${var.project}-vpc"
   subnet-name = "${var.project}-subnet"
+  firewall-name = "${var.project}-firewall"
   cluster-name = "${var.project}-cluster"
 }
 
 # VPC
 module "vpc" {
   source = "../../modules/vpc"
-  name                        = local.vpc-name
+  name   = local.vpc-name
 }
 
 # Subnet
@@ -16,6 +17,13 @@ module "subnet" {
   name    = local.subnet-name
   network = module.vpc.name
   ip_cidr_range = "10.10.0.0/24"
+}
+
+# Firewall
+module "firewall" {
+  source  = "../../modules/firewall"
+  name    = local.firewall-name
+  network = module.vpc.name
 }
 
 # cluster
@@ -67,73 +75,16 @@ data "google_client_config" "default" {
 
 
 
-resource "kubectl_manifest" "cert-manager" {
-    yaml_body = file("cert-manager.yml")
+module "cert_manager" {
+  source        = "terraform-iaac/cert-manager/kubernetes"
+  namespace_name                         = "cert-manager"
+  create_namespace                       = true
+  cluster_issuer_server                  = "https://acme-v02.api.letsencrypt.org/directory"
+  cluster_issuer_name                    = "letsencrypt"
+  cluster_issuer_email                   = "john@ishetstuk.nl"
+  cluster_issuer_private_key_secret_name = "cert-manager-private-key"
 }
-#apiVersion: cert-manager.io/v1
-#kind: ClusterIssuer
-#metadata:
-#  name: letsencrypt-staging
-#spec:
-#  acme:
-#    server: https://acme-staging-v02.api.letsencrypt.org/directory
-#    email: john@ishetstuk.nl
-#    privateKeySecretRef:
-#      name: letsencrypt-staging
-#    solvers:
-#      - http01:
-#          ingress:
-#            class: nginx 120
-#    autoFailoverServerGroup: false
-#YAML
-#}
 
-
-#resource "kubectl_manifest" "cert-manager" {
-#    yaml_body = <<YAML
-#apiVersion: cert-manager.io/v1
-#kind: ClusterIssuer
-#metadata:
-#  name: letsencrypt-staging
-#spec:
-#  acme:
-#    server: https://acme-staging-v02.api.letsencrypt.org/directory
-#    email: john@ishetstuk.nl
-#    privateKeySecretRef:
-#      name: letsencrypt-staging
-#    solvers:
-#      - http01:
-#          ingress:
-#            class: nginx 120
-#    autoFailoverServerGroup: false
-#YAML
-#}
-
-
-#module "cert_manager" {
-#  source        = "terraform-iaac/cert-manager/kubernetes"
-#  namespace_name                         = "cert-manager"
-#  create_namespace                       = true
-#  cluster_issuer_server                  = "https://acme-v02.api.letsencrypt.org/directory"
-
-#  cluster_issuer_email                   = "john@ishetstuk.nl"
-#  cluster_issuer_name                    = "letsencrypt"
-#  cluster_issuer_private_key_secret_name = "cert-manager-private-key"
-#}
-
-#resource "kubernetes_service" "example" {
-#  metadata {
-#    name = "ingress-service"
-#  }
-#  spec {
-#    port {
-#      port = 80
-#      target_port = 80
-#      protocol = "TCP"
-#    }
-#    type = "NodePort"
-#  }
-#}
 
 
 resource "kubernetes_deployment" "nginx" {
@@ -199,6 +150,17 @@ resource "kubernetes_service" "nginx-ingress-svc" {
   }
 }
 
+resource "google_compute_address" "ingress_ip_address" {
+  name = "nginx-controller"
+}
+
+module "nginx-controller" {
+  source  = "terraform-iaac/nginx-controller/helm"
+
+  ip_address = google_compute_address.ingress_ip_address.address
+}
+
+
 resource kubernetes_ingress ingress {
 
   metadata {
@@ -206,7 +168,7 @@ resource kubernetes_ingress ingress {
 
 
     annotations = {
- #     "cert-manager.io/cluster-issuer" = "letsencrypt"
+      "cert-manager.io/cluster-issuer" = module.cert_manager.cluster_issuer_name
       "kubernetes.io/ingress.class" = "nginx"
 
     }
@@ -214,17 +176,17 @@ resource kubernetes_ingress ingress {
 
   spec {
     backend {
-      service_name = "nginx-ingress-svc"
+      service_name = "ingress-service"
 
       service_port = 80
     }
 
     rule {
-      host = "demo.ishetstuk.nl"
+      host = "assessment.ishetstuk.nl"
       http {
         path {
           backend {
-            service_name = "nginx-ingress-svc"
+            service_name = "ingress-service"
             service_port = 80
           }
           path = "/"
@@ -232,10 +194,10 @@ resource kubernetes_ingress ingress {
       }
     }
 
-#    tls {
-#      hosts = ["demo.ishetstuk.nl"]
+    tls {
+      hosts = ["assessment.ishetstuk.nl"]
 
-#      secret_name = "demo.ishetstuk.nl-ssl-cert"
- #   }
+      secret_name = "assessment.ishetstuk.nl-ssl-cert"
+    }
   }
 }
