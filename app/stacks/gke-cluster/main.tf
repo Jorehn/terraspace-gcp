@@ -124,7 +124,7 @@ resource kubernetes_ingress ingress {
       http {
         path {
           backend {
-            service_name = "ingress-service"
+            service_name = "whats-the-time"
             service_port = 8666
           }
           path = "/"
