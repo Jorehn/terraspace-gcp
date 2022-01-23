@@ -87,68 +87,6 @@ module "cert_manager" {
 
 
 
-resource "kubernetes_deployment" "nginx" {
-  metadata {
-    name = "scalable-nginx"
-    labels = {
-      App = "ScalableNginx"
-    }
-  }
-
-  spec {
-    replicas = 3
-    selector {
-      match_labels = {
-        App = "ScalableNginx"
-      }
-    }
-    template {
-      metadata {
-        labels = {
-          App = "ScalableNginx"
-        }
-      }
-      spec {
-        container {
-          image = "nginx:1.7.8"
-          name  = "example"
-
-          port {
-            container_port = 80
-          }
-
-          resources {
-            limits = {
-              cpu    = "0.5"
-              memory = "512Mi"
-            }
-            requests = {
-              cpu    = "250m"
-              memory = "50Mi"
-            }
-          }
-        }
-      }
-    }
-  }
-}
-
-resource "kubernetes_service" "nginx-ingress-svc" {
-  metadata {
-    name = "ingress-service"
-  }
-  spec {
-    selector = {
-      App = kubernetes_deployment.nginx.spec.0.template.0.metadata[0].labels.App
-    }    
-    port {
-      port = 80
-      target_port = 80
-      protocol = "TCP"
-    }
-    type = "NodePort"
-  }
-}
 
 resource "google_compute_address" "ingress_ip_address" {
   name = "nginx-controller"
@@ -176,7 +114,7 @@ resource kubernetes_ingress ingress {
 
   spec {
     backend {
-      service_name = "ingress-service"
+      service_name = "whats-the-time"
 
       service_port = 80
     }
@@ -187,7 +125,7 @@ resource kubernetes_ingress ingress {
         path {
           backend {
             service_name = "ingress-service"
-            service_port = 80
+            service_port = 8666
           }
           path = "/"
         }
